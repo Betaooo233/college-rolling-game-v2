@@ -8,8 +8,14 @@
   const ENDING_BY_ID = indexBy(CFG.Endings, 'id');
   const STORY_BY_ID = indexBy(CFG.StoryEntries || [], 'id');
   const STORY_CHARACTER_BY_ID = indexBy(CFG.StoryCharacters || [], 'id');
+  const VARIANTS_BY_CARD = (CFG.CardVariants || []).reduce((map, item) => {
+    if (!map[item.cardId]) map[item.cardId] = [];
+    map[item.cardId].push(item);
+    return map;
+  }, {});
+  const FLAG_BY_ID = indexBy(CFG.SemesterFlags || [], 'id');
+  const HIDDEN_TITLE_BY_ID = indexBy(CFG.HiddenTitles || [], 'id');
   const STORY_COLLECTIBLE_BY_ID = indexBy(CFG.StoryCollectibles || [], 'id');
-
   const Loader = {
     images: {},
     audio: {},
@@ -357,6 +363,23 @@
         storyMisses: 0,
         weeklyStoryCount: 0,
         storyNewThisRun: [],
+        chosenFlag: null,
+        flagChoices: [],
+        flagProgress: {},
+        cardVariantHistory: [],
+        recentVariantKeys: [],
+        familiarity: { roommate: 0, classmate: 0, teacher: 0, senior: 0 },
+        weeklyFamiliarityGain: {},
+        interventionsUsed: {},
+        interventionCooldown: 0,
+        campusWallFeed: [],
+        recentWallPostIds: [],
+        recentWallCommentIds: [],
+        highlightMoments: [],
+        failMoments: [],
+        hiddenTitles: [],
+        titleBook: this.loadTitleBook ? this.loadTitleBook() : { items: {} },
+        finalReport: null,
         dex: this.loadDex ? this.loadDex() : { items: {} },
         muted: this.loadMuted ? this.loadMuted() : false
       };
@@ -410,6 +433,7 @@
       this.state = this.createInitialState();
       this.state.dex = dex;
       this.state.storyBook = storyBook;
+      this.state.titleBook = this.loadTitleBook();
       this.state.muted = muted;
       Loader.syncMuted();
       this.showTutorial(0);
@@ -436,11 +460,83 @@
       window.setTimeout(() => { if (button !== null) button.disabled = false; }, CFG.Game.tutorialMinMs);
       Input.bindTap(button, () => {
         if (isLast) {
-          this.state.currentCards = this.generateCards();
-          this.showPlayScreen();
+          this.prepareFlagChoices();
+          this.showFlagSelectScreen();
         } else {
           this.showTutorial(page + 1);
         }
+      });
+    },
+
+    prepareFlagChoices() {
+      const flags = CFG.SemesterFlags || [];
+      if (this.state.flagChoices && this.state.flagChoices.length) return;
+      if (!this.hasEverPlayed()) {
+        this.state.flagChoices = ['flag_scholarship', 'flag_social', 'flag_sleep'];
+        return;
+      }
+      this.state.flagChoices = shuffle(flags.map((flag) => flag.id)).slice(0, CFG.Game.visibleCardCount);
+      while (this.state.flagChoices.length < CFG.Game.visibleCardCount && flags[this.state.flagChoices.length]) {
+        this.state.flagChoices.push(flags[this.state.flagChoices.length].id);
+      }
+    },
+
+    showFlagSelectScreen() {
+      this.clearOverlay();
+      this.state.screen = 'flag';
+      this.prepareFlagChoices();
+      this.dom.scene.innerHTML = `
+        <section class="scene flag-scene">
+          <div class="ui-stage">
+            <div class="flag-title">本学期 Flag</div>
+            <div class="flag-subtitle">先立一个小目标，黑历史报告会如实记录。</div>
+            <div class="flag-card-list">
+              ${this.state.flagChoices.map((id) => this.renderFlagChoiceCard(FLAG_BY_ID[id])).join('')}
+            </div>
+          </div>
+        </section>
+      `;
+      this.state.flagChoices.forEach((id) => this.bindSceneButton(`flag-${id}`, () => this.chooseSemesterFlag(id)));
+    },
+
+    renderFlagChoiceCard(flag) {
+      if (!flag) return '';
+      const visual = flag.asset ? Loader.imageHtml(flag.asset, 'flag-card-img', flag.shortName) : `<div class="flag-fallback" style="--flag-color:${flag.fallbackColor}">${flag.shortName.slice(0, 2)}</div>`;
+      return `
+        <button class="flag-choice-card" data-action="flag-${flag.id}">
+          <div class="flag-visual">${visual}</div>
+          <div class="flag-copy">
+            <div class="flag-name">${flag.name}</div>
+            <div class="flag-desc">${flag.description}</div>
+            <div class="flag-stage-hint">${flag.stageHints[4]}</div>
+          </div>
+        </button>
+      `;
+    },
+
+    chooseSemesterFlag(flagId) {
+      const flag = FLAG_BY_ID[flagId];
+      if (!flag) return;
+      this.state.chosenFlag = flagId;
+      this.updateFlagProgress();
+      this.addHighlightMoment(`立下 Flag：${flag.shortName}，校园生活开始失控。`, 18, 'flag');
+      Loader.play('flagReveal');
+      this.spawnParticles('habit', CFG.UI.eventParticleX, CFG.UI.habitParticleY);
+      this.dom.overlay.innerHTML = `
+        <div class="overlay-dim flag-confirm"><div class="ui-stage">
+          <div class="dialog-card flag-confirm-card">
+            <div class="flag-confirm-stamp">Flag 已立</div>
+            <h2 class="dialog-title">${flag.shortName}开局</h2>
+            <p class="dialog-text">${flag.name}</p>
+            <div class="note-line">${flag.description}</div>
+            <button class="btn primary" data-action="flag-start">进入第 1 周</button>
+          </div>
+        </div></div>
+      `;
+      this.bindOverlayButton('flag-start', () => {
+        this.clearOverlay();
+        this.state.currentCards = this.generateCards();
+        this.showPlayScreen();
       });
     },
 
@@ -471,11 +567,8 @@
           </div>
           <button class="pause-button" data-action="pause" aria-label="暂停">Ⅱ</button>
           ${this.renderAttrBoard()}
-          <div class="roast-bubble">
-            <div class="roast-kicker">吐槽画像</div>
-            <div class="roast-text">${this.state.currentRoast}</div>
-          </div>
-          ${this.renderHabitRow()}
+          ${this.renderCampusWallPanel()}
+          ${this.renderFlagAndHabitRow()}
           <div class="card-row">${this.renderCards()}</div>
           <div class="bottom-panel">
             <div class="combo-box">${this.state.comboMessage}</div>
@@ -542,6 +635,48 @@
       `;
     },
 
+    renderCampusWallPanel() {
+      const latest = this.state.campusWallFeed[this.state.campusWallFeed.length - 1];
+      if (!latest) {
+        return `
+          <div class="campus-wall-card empty">
+            <div class="wall-head"><span>校园墙</span><span>等待第一条匿名动态</span></div>
+            <div class="wall-post">匿名墙：校园生活真的开始失控了吗？</div>
+          </div>
+        `;
+      }
+      return `
+        <div class="campus-wall-card ${latest.heat >= CFG.CampusWall.hotThreshold ? 'hot' : ''}">
+          <div class="wall-head"><span>校园墙</span><span>${CFG.CampusWall.heatLabels[latest.heat] || '围观'}</span></div>
+          <div class="wall-post">${latest.post}</div>
+          <div class="wall-comments">${latest.comments.slice(0, 2).map((text) => `<span>${text}</span>`).join('')}</div>
+        </div>
+      `;
+    },
+
+    renderFlagAndHabitRow() {
+      const flag = this.getChosenFlag();
+      const progress = this.updateFlagProgress();
+      const flagText = flag ? `本学期Flag：${flag.shortName} ${progress.percent}%` : '本学期Flag：未选择';
+      return `
+        <div class="flag-habit-row">
+          <div class="flag-mini ${flag && progress.onTrack ? 'alive' : 'smoke'}">
+            <span>${flagText}</span>
+            <em>${flag ? progress.label : '立下目标后开始记录'}</em>
+          </div>
+          <div class="habit-mini-list">${this.renderHabitChipsInline()}</div>
+        </div>
+      `;
+    },
+
+    renderHabitChipsInline() {
+      if (!this.state.habits.length) return '<span class="habit-mini-empty">习惯贴纸未形成</span>';
+      const visible = this.state.habits.slice(0, 3);
+      const extra = this.state.habits.length - visible.length;
+      return `${visible.map((id, index) => `<span class="habit-chip mini ${this.wasHabitRecentlyUnlocked(id) ? 'new' : ''}" style="--rot:${this.getChipRotation(index)}deg">${HABIT_BY_ID[id].name}</span>`).join('')}${extra > 0 ? `<span class="habit-chip mini">+${extra}</span>` : ''}`;
+    },
+
+
     renderCards() {
       if (!this.state.currentCards.length) {
         return '<div class="habit-empty">周末结算中，等辅导员发话。</div>';
@@ -556,8 +691,9 @@
           <article class="${classes.join(' ')}" data-card-id="${card.id}">
             <div class="card-icon-wrap">${Loader.imageHtml(card.icon, 'card-icon', card.name)}</div>
             <div class="card-name">${card.name}</div>
-            <div class="card-desc">${card.description}</div>
-            <div class="effect-list">${this.renderEffectPreview(card.effects)}</div>
+            <div class="variant-title">${card.variant ? card.variant.title : '日常版'}</div>
+            <div class="card-desc">${card.variant ? card.variant.description : card.description}</div>
+            <div class="effect-list">${this.renderEffectPreview(card.previewEffects || card.effects)}</div>
           </article>
         `;
       }).join('');
@@ -578,20 +714,23 @@
 
     selectCard(cardId) {
       if (this.state.cardLocked || this.state.pendingNext) return;
-      const card = CARD_BY_ID[cardId];
+      const card = this.state.currentCards.find((item) => item.id === cardId) || CARD_BY_ID[cardId];
       if (!card) return;
       const cardIndex = this.state.currentCards.findIndex((item) => item.id === cardId);
       const effectResult = this.buildCardEffects(card);
       this.state.cardLocked = true;
       this.state.selectedVisual = card.id;
       Loader.play('cardSelect');
-
       const changes = this.applyEffects(effectResult.effects, 'card', card.id);
       this.afterCardSelected(card, effectResult.comboText);
       const newHabits = this.checkHabits();
+      const familiarityGain = this.handleVariantAfterSelect(card, changes);
       const roast = this.pickRoast(card, newHabits, changes);
       this.recordRoast(roast);
+      this.generateCampusWall(card, changes, newHabits, familiarityGain);
       this.state.comboMessage = this.buildComboMessage(effectResult.comboText, newHabits);
+      const intervention = this.tryCharacterIntervention(card);
+      if (intervention) this.state.comboMessage = `${intervention.characterName}插手：${intervention.summary}`;
       this.renderPlay();
       this.showFloatingChanges(changes, card.primary);
       this.spawnParticles('card', this.getCardCenterX(cardIndex), CFG.UI.cardTop + CFG.UI.cardParticleYOffset);
@@ -656,10 +795,12 @@
         addEffect(effects, 'mood', 2);
         addEffect(effects, 'health', 1);
       }
+      if (card.variant && card.variant.effects) mergeEffects(effects, card.variant.effects);
       if (nextCategoryCount >= CFG.Game.comboCount) {
         addEffect(effects, card.primary, 2);
         comboText = `${card.bigCategory}连选 Combo：${CFG.Attributes[card.primary].label}额外 +2`;
       }
+      this.clampNegativeEffectsForStage(effects);
       return { effects, comboText };
     },
 
@@ -669,6 +810,8 @@
         week: this.state.week,
         actionIndexInWeek: this.state.actionIndexInWeek,
         cardId: card.id,
+        variantId: card.variant ? card.variant.id : null,
+        variantTitle: card.variant ? card.variant.title : '',
         bigCategory: card.bigCategory,
         tags: card.tags.slice()
       });
@@ -686,6 +829,7 @@
       }
       this.state.actionIndexInWeek += 1;
       this.state.totalActionsTaken += 1;
+      if (this.state.interventionCooldown > 0) this.state.interventionCooldown -= 1;
       if (comboText) this.state.lastComboText = comboText;
     },
 
@@ -924,6 +1068,7 @@
         } else if (this.state.storyBook.unlockedCharacters[story.character]) {
           this.state.storyBook.unlockedCharacters[story.character].lastWeek = this.state.week;
         }
+        this.gainFamiliarity(story.character, 1, `${CFG.Familiarity.names[story.character]} 熟悉度 +1`);
       }
       if (story.reward && (unlocked.story || unlocked.egg)) {
         changes.push(...this.applyEffects(story.reward, 'story', story.id));
@@ -1302,12 +1447,94 @@
       this.state.weekCategories = [];
       this.state.weekPressureCount = 0;
       this.state.weeklyStoryCount = 0;
+      this.state.weeklyFamiliarityGain = {};
+      this.state.interventionCooldown = Math.max(0, this.state.interventionCooldown - 1);
       this.state.lastWeeklySummary = '';
-      this.state.pendingNext = null;
       this.state.cardLocked = false;
       this.state.selectedVisual = null;
-      this.state.currentCards = this.generateCards();
-      this.showPlayScreen();
+      const flagCheck = this.buildFlagCheckMessage();
+      if (flagCheck) {
+        this.showFlagCheckDialog(flagCheck, () => {
+          this.state.currentCards = this.generateCards();
+          this.showPlayScreen();
+        });
+      } else {
+        this.state.currentCards = this.generateCards();
+        this.showPlayScreen();
+      }
+    },
+
+
+    buildFlagCheckMessage() {
+      const previousWeek = this.state.week - 1;
+      if ((CFG.Game.flagCheckWeeks || []).indexOf(previousWeek) < 0) return null;
+      const flag = this.getChosenFlag();
+      if (!flag) return null;
+      const progress = this.updateFlagProgress();
+      const alive = progress.onTrack;
+      const text = alive ? 'Flag 还活着，甚至有点想发朋友圈。' : 'Flag 开始冒烟，但还没到退群的时候。';
+      const momentText = `第${previousWeek}周 Flag 检查：${flag.shortName}${alive ? '还活着' : '开始冒烟'}。`;
+      this.generateCampusWall(null, [], [], null, 'flag');
+      if (alive) this.addHighlightMoment(momentText, 25, 'flag');
+      else this.addFailMoment(momentText, [{ delta: -6, attr: 'identity' }], 'flag');
+      return { flag, progress, text, alive, week: previousWeek };
+    },
+
+    showFlagCheckDialog(info, onContinue) {
+      Loader.play('eventPopup');
+      this.dom.overlay.innerHTML = `
+        <div class="overlay-dim"><div class="ui-stage">
+          <div class="dialog-card flag-check-card ${info.alive ? 'alive' : 'smoke'}">
+            <h2 class="dialog-title">第 ${info.week} 周 Flag 复盘</h2>
+            <p class="dialog-text">${info.flag.name}</p>
+            <div class="note-line">${info.text}</div>
+            <div class="note-line">当前进度：${info.progress.percent}% · ${info.progress.label}</div>
+            <button class="btn primary" data-action="flag-check-continue">继续</button>
+          </div>
+        </div></div>
+      `;
+      this.bindOverlayButton('flag-check-continue', () => {
+        this.clearOverlay();
+        if (typeof onContinue === 'function') onContinue();
+      });
+    },
+
+
+    tryCharacterIntervention(card) {
+      if (this.state.interventionCooldown > 0) return null;
+      const candidates = [
+        { id: 'roommate', condition: this.state.attrs.mood <= 25 || this.state.attrs.health <= 28, effects: { mood: 5, health: 3 }, summary: '把你从床帘结界里捞出来一次。' },
+        { id: 'classmate', condition: this.state.attrs.academic <= 35 || this.isFlagBehind(['flag_scholarship', 'flag_direction']), effects: { academic: 6, skill: 1, social: this.state.attrs.social < 30 ? 1 : 0 }, summary: '递来的资料包短暂改变了命运。' },
+        { id: 'teacher', condition: this.state.attrs.academic <= 25 || (this.state.week >= 13 && this.state.attrs.academic < 45), effects: { academic: 8, identity: 2, mood: -1 }, summary: '温柔地阻止了你的绩点坠机。' },
+        { id: 'senior', condition: this.state.attrs.social <= 30 || this.isFlagBehind(['flag_social', 'flag_skill']), effects: { social: 6, identity: 2, health: -1 }, summary: '又一次把报名表递成救命绳。' }
+      ];
+      const picked = candidates.find((item) => this.state.familiarity[item.id] >= CFG.Familiarity.maxLevel && item.condition && !this.state.interventionsUsed[item.id]);
+      if (!picked) return null;
+      const effects = clone(picked.effects);
+      const changes = this.applyEffects(effects, 'intervention', picked.id);
+      this.state.interventionsUsed[picked.id] = true;
+      this.state.interventionCooldown = CFG.Familiarity.interventionCooldownActions;
+      const characterName = CFG.Familiarity.names[picked.id] || picked.id;
+      this.showFloatingChanges(changes, null, true);
+      this.spawnParticles('habit', CFG.UI.eventParticleX, CFG.UI.eventParticleY);
+      this.generateCampusWall(card || null, changes, [], { name: characterName }, 'intervention');
+      this.addHighlightMoment(`${characterName}${picked.summary}`, 35, 'intervention', picked.id);
+      return { characterId: picked.id, characterName, changes, summary: picked.summary };
+    },
+
+    isFlagBehind(flagIds) {
+      const flag = this.getChosenFlag();
+      if (!flag || flagIds.indexOf(flag.id) < 0 || this.state.week < 8) return false;
+      return !this.updateFlagProgress().onTrack;
+    },
+
+    addHighlightMoment(text, score, type, characterId) {
+      this.state.highlightMoments.push({ week: this.state.week, action: this.state.totalActionsTaken, text, score: score || 10, type: type || 'general', characterId: characterId || null });
+    },
+
+    addFailMoment(text, changes, type) {
+      const negative = (changes || []).reduce((sum, item) => sum + Math.abs(Math.min(item.delta || 0, 0)), 0);
+      this.state.failMoments.push({ week: this.state.week, action: this.state.totalActionsTaken, text, score: negative || 6, type: type || 'fail' });
     },
 
     finishGame() {
@@ -1318,51 +1545,70 @@
       const isCollectible = route.ending.id !== CFG.FallbackEnding.id;
       const dexBefore = this.loadDex();
       const isNew = isCollectible && !dexBefore.items[route.ending.id];
-      const score = this.calculateFinalScore(route.score, isNew);
+      const flagResult = this.updateFlagProgress();
+      const chosenFlag = this.getChosenFlag();
+      if (chosenFlag) {
+        const flagText = `第16周 Flag 终审：${chosenFlag.shortName}${flagResult.success ? '成功盖章' : '留下黑历史'}。`;
+        if (flagResult.success) this.addHighlightMoment(flagText, 25, 'flag');
+        else this.addFailMoment(flagText, [{ delta: -6, attr: 'identity' }], 'flag');
+      }
+      const score = this.calculateFinalScore(route.score, isNew, flagResult.success);
       const star = this.getStarInfo(score);
       const dexAfter = isCollectible ? this.updateDex(route.ending, star, representativeRoasts[0]) : dexBefore;
+      const report = this.buildBlackHistoryReport(route, score, star, representativeRoasts, isNew, flagResult);
       this.state.dex = dexAfter;
-      this.state.lastResult = { route, score, star, representativeRoasts, isNew };
+      this.state.finalReport = report;
+      this.state.lastResult = { route, score, star, representativeRoasts, isNew, report };
       this.state.screen = 'result';
       this.renderResult();
+      Loader.play('blackReportStamp');
       Loader.play('endingFanfare');
       this.spawnParticles('ending', CFG.UI.endingParticleX, CFG.UI.endingParticleY);
-      if (route.ending.rarityRank >= 2 || isNew) this.shake(CFG.UI.shakeMinorPower);
     },
 
     renderResult() {
       const result = this.state.lastResult;
       const ending = result.route.ending;
       const progress = this.getDexProgress(this.state.dex);
+      const report = result.report;
       this.dom.scene.innerHTML = `
-        <section class="scene report-scene">
+        <section class="scene report-scene black-report-scene">
           <div class="ui-stage">
-          <div class="report-card">
-            <div class="report-head">
-              <div class="avatar-frame">${Loader.imageHtml(ending.avatar, 'avatar-img', ending.name)}</div>
-              <div>
-                <div class="report-kicker">${result.isNew ? '新人格解锁' : '期末人格结算'}</div>
-                <h1 class="ending-name">${ending.name}</h1>
-                <div class="rarity-line">稀有度：${ending.rarity} <span class="stars">${renderStars(result.star.stars)}</span></div>
-                <div class="score-line">总分：${result.score} / 100</div>
-                <div class="dex-progress">已收集 ${progress.count}/${CFG.Game.dexTotal}</div>
+            <div class="black-report-title">本学期黑历史报告</div>
+            <div class="black-report-scroll">
+              <div class="report-head black-head">
+                <div class="avatar-frame">${Loader.imageHtml(ending.avatar, 'avatar-img', ending.name)}</div>
+                <div>
+                  <div class="report-kicker">${result.isNew ? '新人格解锁' : '最终人格'}</div>
+                  <h1 class="ending-name">${ending.name}</h1>
+                  <div class="rarity-line">${ending.rarity} <span class="stars">${renderStars(result.star.stars)}</span></div>
+                  <div class="score-line">总分：${result.score} / 100</div>
+                </div>
               </div>
+              <div class="ending-desc">${ending.description}<br>${result.star.text}</div>
+              <div class="report-section-title">本学期 Flag</div>
+              <div class="note-line ${report.flag.success ? 'success-line' : 'fail-line'}">${report.flag.name}：${report.flag.success ? '成功' : '失败'} · ${report.flag.summary}</div>
+              <div class="report-section-title">本局名场面</div>
+              <div class="timeline-list">${report.highlights.map((item) => `<div class="timeline-item">第${item.week}周 · ${item.text}</div>`).join('')}</div>
+              <div class="report-section-title">关键人物</div>
+              <div class="note-line">${report.keyPerson}</div>
+              <div class="report-section-title">最大翻车点</div>
+              <div class="note-line fail-line">${report.failPoint}</div>
+              <div class="report-section-title">隐藏称号</div>
+              <div class="title-chip-list">${report.titles.map((title) => `<span class="title-chip">${title.name}</span>`).join('')}</div>
+              <div class="report-section-title">收集进度</div>
+              <div class="note-line story-result-line">人格 ${progress.count}/${CFG.Game.dexTotal} · 校园纪事 ${this.renderStoryProgressText()} · 称号 ${report.titleProgress.count}/${report.titleProgress.total}</div>
+              <div class="report-section-title">七项属性变化</div>
+              <div class="final-attrs">${this.renderFinalAttributes()}</div>
+              <div class="report-section-title">习惯与代表吐槽</div>
+              <div class="report-habits">${this.renderReportHabits()}</div>
+              <div class="report-roasts">${result.representativeRoasts.map((text) => `<div class="note-line">${text}</div>`).join('')}</div>
             </div>
-            <div class="ending-desc">${ending.description}<br>${result.star.text}</div>
-            <div class="report-section-title">七项属性变化</div>
-            <div class="final-attrs">${this.renderFinalAttributes()}</div>
-            <div class="report-section-title">本局习惯标签</div>
-            <div class="report-habits">${this.renderReportHabits()}</div>
-            <div class="report-section-title">代表吐槽画像</div>
-            <div class="report-roasts">${result.representativeRoasts.map((text) => `<div class="note-line">${text}</div>`).join('')}</div>
-            <div class="report-section-title">校园纪事</div>
-            <div class="note-line story-result-line">本局新增校园纪事 ${this.getStoryNewCountThisRun()} 条 · ${this.renderStoryProgressText()}</div>
-            <div class="report-actions">
+            <div class="report-actions fixed-actions">
               <button class="btn primary" data-action="again">再来一局</button>
               <button class="btn secondary" data-action="dex">查看图鉴</button>
               <button class="btn secondary" data-action="home">返回首页</button>
             </div>
-          </div>
           </div>
         </section>
       `;
@@ -1372,6 +1618,101 @@
       });
       this.bindSceneButton('dex', () => this.showDexScreen());
       this.bindSceneButton('home', () => this.showStartScreen());
+    },
+
+    buildBlackHistoryReport(route, score, star, representativeRoasts, isNew, flagResult) {
+      const flag = this.getChosenFlag();
+      const flagSummary = flagResult.success ? (flag ? flag.successTitle : 'Flag 成功') : (flag ? flag.failureText : '这学期没有立 Flag，但黑历史仍在生成。');
+      if (flag && !flagResult.success) this.addFailMoment(`Flag 失败：${flag.failureText}`, [{ delta: -10, attr: 'identity' }], 'flag');
+      const titleList = this.determineHiddenTitles(flagResult, route);
+      this.updateTitleBook(titleList, route.ending);
+      const highlights = this.getReportHighlights(representativeRoasts);
+      return {
+        flag: { name: flag ? flag.name : '未选择 Flag', success: Boolean(flagResult.success), summary: flagSummary, progress: flagResult },
+        highlights,
+        keyPerson: this.getKeyPersonSummary(),
+        failPoint: this.getFailPointSummary(flag, flagResult),
+        titles: titleList,
+        titleProgress: this.getTitleProgress(this.state.titleBook)
+      };
+    },
+
+    getReportHighlights(roasts) {
+      const byWeek = {};
+      const picked = [];
+      const sorted = this.state.highlightMoments.slice().sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return b.week - a.week;
+      });
+      sorted.forEach((item) => {
+        if (picked.length >= CFG.ReportRules.maxHighlights) return;
+        byWeek[item.week] = byWeek[item.week] || 0;
+        if (byWeek[item.week] >= CFG.ReportRules.sameWeekLimit) return;
+        picked.push(item);
+        byWeek[item.week] += 1;
+      });
+      let roastIndex = 0;
+      while (picked.length < CFG.ReportRules.minHighlights) {
+        picked.push({ week: this.state.week, text: roasts[roastIndex] || CFG.Game.defaultRoast, score: 1, type: 'roast' });
+        roastIndex += 1;
+      }
+      return picked.slice(0, CFG.ReportRules.maxHighlights).sort((a, b) => a.week - b.week);
+    },
+
+    getKeyPersonSummary() {
+      const interventionId = Object.keys(this.state.interventionsUsed).find((id) => this.state.interventionsUsed[id]);
+      const key = interventionId || Object.keys(this.state.familiarity).sort((a, b) => (this.state.familiarity[b] || 0) - (this.state.familiarity[a] || 0))[0];
+      if (!key || !this.state.familiarity[key]) return '暂未形成关键人物，但校园墙一直在旁观。';
+      const character = STORY_CHARACTER_BY_ID[key];
+      const level = this.state.familiarity[key] || 0;
+      const status = CFG.Familiarity.statuses[level] || '认识';
+      return `${character ? character.name : key} · ${status} · 熟悉度 ${level}/3${interventionId === key ? ' · 本局关键时刻插手' : ''}`;
+    },
+
+    getFailPointSummary(flag, flagResult) {
+      const candidates = this.state.failMoments.slice();
+      if (flag && !flagResult.success) candidates.push({ week: this.state.week, text: `Flag失败：${flag.failureText}`, score: 20, type: 'flag' });
+      if (!candidates.length) return '最大翻车点：竟然没有特别离谱，这本身就很离谱。';
+      const picked = candidates.sort((a, b) => b.score - a.score || b.week - a.week)[0];
+      return `第${picked.week}周 · ${picked.text}`;
+    },
+
+    determineHiddenTitles(flagResult, route) {
+      const titles = [];
+      const add = (id, weight) => {
+        const title = HIDDEN_TITLE_BY_ID[id];
+        if (title) titles.push(Object.assign({ weight: weight || 10 }, title));
+      };
+      const flag = this.getChosenFlag();
+      if (flagResult.success && flag) {
+        const map = { flag_scholarship: 'title_scholarship', flag_social: 'title_social_king', flag_sleep: 'title_sleep_miracle', flag_direction: 'title_direction_clear', flag_money: 'title_money_recover', flag_skill: 'title_ddl_tamer' };
+        add(map[flag.id], 60);
+      }
+      if (this.state.attrs.skill >= 75) add('title_ddl_tamer', 45);
+      if (this.countGroup('fishRest') >= 7 && this.state.attrs.academic >= 75) add('title_lazy_study', 42);
+      if (this.countGroup('study') >= 6 && this.isEggUnlocked('egg_library_note')) add('title_collect_master', 38);
+      if (this.state.attrs.health <= 35 && (this.state.attrs.academic >= 80 || this.state.attrs.skill >= 80)) add('title_coffee_server', 44);
+      if (this.getCardCount('sleep') + this.getCardCount('video') + this.getCardCount('reject') >= 8) add('title_curtain_guard', 36);
+      if (this.isEggUnlocked('egg_campus_cat') || this.state.attrs.mood >= 75) add('title_cat_friend', 35);
+      if (this.state.attrs.money <= 20 && this.state.attrs.mood >= 60) add('title_money_math', 32);
+      if (this.getCardCount('sleep') >= 5 && this.state.attrs.academic >= 60) add('title_schedule_vanish', 34);
+      if (this.state.attrs.social <= 35 && this.state.campusWallFeed.length >= 4) add('title_group_diver', 30);
+      if (unique(this.state.selectedHistory.map((item) => item.bigCategory)).length >= 6) add('title_shuffle_artist', 33);
+      if (this.state.campusWallFeed.filter((item) => item.heat >= CFG.CampusWall.hotThreshold).length >= 3) add('title_wall_star', 46);
+      if (!flagResult.success && route.score >= 70) add('title_flag_reverse', 50);
+      if (!titles.length) add('title_normal_sample', 1);
+      return titles.sort((a, b) => b.weight - a.weight).slice(0, 3);
+    },
+
+    updateTitleBook(titles, ending) {
+      const book = this.loadTitleBook();
+      titles.forEach((title) => {
+        if (!book.items[title.id]) {
+          book.items[title.id] = { id: title.id, name: title.name, firstUnlockedAt: new Date().toISOString(), ending: ending.name };
+        }
+      });
+      this.state.titleBook = book;
+      this.saveTitleBook(book);
     },
 
     renderFinalAttributes() {
@@ -1654,7 +1995,7 @@
     generateCards() {
       const available = CFG.Cards.filter((card) => card.unlockWeek <= this.state.week);
       if (this.state.week === 1 && this.state.actionIndexInWeek === 0) {
-        const firstCards = CFG.Game.firstChoiceCardIds.map((id) => CARD_BY_ID[id]);
+        const firstCards = CFG.Game.firstChoiceCardIds.map((id) => this.attachCardVariant(CARD_BY_ID[id]));
         this.updateOfferMisses(firstCards);
         return firstCards;
       }
@@ -1673,9 +2014,51 @@
         selected.push(weightedPick(pool, (card) => this.getCardWeight(card)));
       }
       this.updateOfferMisses(selected);
-      return selected;
+      return selected.map((card) => this.attachCardVariant(card));
     },
 
+
+    attachCardVariant(card) {
+      if (!card) return card;
+      const variant = this.pickCardVariant(card.id);
+      if (variant) this.recordVariantOffer(card.id, variant.id);
+      const previewEffects = clone(card.effects);
+      if (variant && variant.effects) mergeEffects(previewEffects, variant.effects);
+      this.clampNegativeEffectsForStage(previewEffects);
+      return Object.assign({}, card, {
+        effects: clone(card.effects),
+        variant,
+        previewEffects
+      });
+    },
+
+    recordVariantOffer(cardId, variantId) {
+      const key = `${cardId}:${variantId}`;
+      this.state.recentVariantKeys.push(key);
+      while (this.state.recentVariantKeys.length > CFG.Game.cardVariantOfferWindow) this.state.recentVariantKeys.shift();
+    },
+
+    pickCardVariant(cardId) {
+      const variants = VARIANTS_BY_CARD[cardId] || [];
+      if (!variants.length) return null;
+      const recent = this.state.recentVariantKeys || [];
+      const recentForCard = recent.slice(-CFG.Game.cardVariantRecentWindow);
+      let pool = variants.filter((variant) => recentForCard.indexOf(`${cardId}:${variant.id}`) < 0);
+      if (!pool.length) pool = variants;
+      const picked = weightedPick(pool, (variant) => {
+        const familiarityBoost = variant.character && this.state.familiarity[variant.character] >= 2 ? 1 : 0;
+        const eggBoost = variant.eggBoost ? 1 : 0;
+        return 10 + familiarityBoost + eggBoost;
+      });
+      return clone(picked);
+    },
+
+    clampNegativeEffectsForStage(effects) {
+      const min = this.state.week <= 4 ? CFG.Game.earlyVariantMinNegative : CFG.Game.lateVariantMinNegative;
+      ATTR_KEYS.forEach((key) => {
+        if (effects[key] < min) effects[key] = min;
+      });
+    },
     getCardWeight(card) {
       let weight = CFG.Game.baseCardWeight;
       const stage = this.getStage(this.state.week);
@@ -1748,14 +2131,14 @@
       return clamp(Math.round(score), 0, CFG.Game.routeScoreCap);
     },
 
-    calculateFinalScore(routeScore, isNew) {
+    calculateFinalScore(routeScore, isNew, flagSuccess) {
       const attrAvg = ATTR_KEYS.reduce((sum, key) => sum + this.state.attrs[key], 0) / ATTR_KEYS.length;
       const habitRaw = this.state.habits.reduce((sum, id) => {
         const habit = HABIT_BY_ID[id];
         return sum + (habit.quality > 0 ? CFG.Game.positiveHabitScore : CFG.Game.negativeHabitScore);
       }, 0);
       const habitScore = clamp(habitRaw, 0, CFG.Game.habitScoreCap);
-      const total = attrAvg * 0.5 + clamp(routeScore, 0, CFG.Game.routeScoreCap) * 0.3 + habitScore + (isNew ? CFG.Game.newCollectionBonus : 0);
+      const total = attrAvg * 0.5 + clamp(routeScore, 0, CFG.Game.routeScoreCap) * 0.3 + habitScore + (isNew ? CFG.Game.newCollectionBonus : 0) + (flagSuccess ? CFG.Game.flagSuccessBonus : 0);
       return clamp(Math.round(total), 0, CFG.Game.routeScoreCap);
     },
 
@@ -1821,6 +2204,103 @@
       });
       this.state.recentRoastIds.push(item.id);
       while (this.state.recentRoastIds.length > CFG.Game.recentRoastWindow) this.state.recentRoastIds.shift();
+    },
+
+
+    handleVariantAfterSelect(card, changes) {
+      const variant = card.variant;
+      if (!variant) return null;
+      this.state.cardVariantHistory.push({ week: this.state.week, action: this.state.totalActionsTaken, cardId: card.id, variantId: variant.id });
+      const deltaScore = changes.reduce((sum, item) => sum + item.delta, 0);
+      if (variant.moment === 'highlight') this.addHighlightMoment(`${card.name} · ${variant.title}：${variant.description}`, 20 + Math.max(deltaScore, 0), 'variant');
+      if (variant.moment === 'fail') this.addFailMoment(`${card.name} · ${variant.title}：${variant.description}`, changes, 'variant');
+      if (variant.eggBoost) this.addHighlightMoment(`校园猫审核了你的路线：${variant.description}`, 18, 'egg');
+      if (variant.character) return this.gainFamiliarity(variant.character, 1, `${CFG.Familiarity.names[variant.character]} 熟悉度 +1`);
+      return null;
+    },
+
+    gainFamiliarity(characterId, amount, reason) {
+      if (!characterId || !this.state.familiarity) return null;
+      const gainedThisWeek = this.state.weeklyFamiliarityGain[characterId] || 0;
+      if (gainedThisWeek >= CFG.Familiarity.weeklyGainLimit) return null;
+      const before = this.state.familiarity[characterId] || 0;
+      const gain = Math.min(amount || 1, CFG.Familiarity.weeklyGainLimit - gainedThisWeek, CFG.Familiarity.maxLevel - before);
+      if (gain <= 0) return null;
+      this.state.familiarity[characterId] = before + gain;
+      this.state.weeklyFamiliarityGain[characterId] = gainedThisWeek + gain;
+      this.unlockCharacterByFamiliarity(characterId);
+      const name = CFG.Familiarity.names[characterId] || characterId;
+      this.addFloatText(CFG.Familiarity.floatX, CFG.Familiarity.floatY, reason || `${name} 熟悉度 +${gain}`, CFG.Colors.habit, CFG.UI.floatSecondarySize, CFG.UI.floatSecondaryRise);
+      this.addHighlightMoment(`${name}熟悉度升到 ${this.state.familiarity[characterId]} 级。`, 16 + this.state.familiarity[characterId] * 4, 'familiarity');
+      return { characterId, name, gain, level: this.state.familiarity[characterId] };
+    },
+
+    unlockCharacterByFamiliarity(characterId) {
+      if (!characterId) return;
+      this.state.storyBook = normalizeStoryBook(this.state.storyBook);
+      if (this.state.storyBook.unlockedCharacters[characterId]) return;
+      const character = STORY_CHARACTER_BY_ID[characterId];
+      this.state.storyBook.unlockedCharacters[characterId] = {
+        id: characterId,
+        name: character ? character.name : characterId,
+        firstUnlockedAt: new Date().toISOString(),
+        lastWeek: this.state.week
+      };
+      this.state.storyNewThisRun.push({ id: `character-${characterId}`, count: 1, week: this.state.week });
+      this.saveStoryBook(this.state.storyBook);
+    },
+
+    generateCampusWall(card, changes, newHabits, familiarityGain, forcedType) {
+      const type = forcedType || this.getCampusWallType(card, changes);
+      const postPool = CFG.CampusWall.posts[type] || CFG.CampusWall.posts.flag;
+      const post = this.pickRecentSafe(postPool, this.state.recentWallPostIds, CFG.CampusWall.recentPostWindow);
+      const comments = this.pickWallComments(familiarityGain);
+      let heat = 0;
+      if (changes.some((item) => Math.abs(item.delta) >= 10)) heat += 1;
+      if ((newHabits && newHabits.length) || familiarityGain) heat += 1;
+      if (this.isFlagMilestoneWeek() || forcedType === 'intervention') heat += 1;
+      heat = clamp(heat, 0, CFG.CampusWall.hotThreshold);
+      const item = { week: this.state.week, action: this.state.totalActionsTaken, type, post, comments, heat };
+      this.state.campusWallFeed.push(item);
+      Loader.play('campusWallPing');
+      if (heat >= CFG.CampusWall.hotThreshold) this.addHighlightMoment(post.replace('匿名墙：', ''), 25, 'campusWall');
+      return item;
+    },
+
+    getCampusWallType(card, changes) {
+      if (this.state.attrs.health < CFG.Game.lowAttributeThreshold || changes.some((item) => item.attr === 'health' && item.delta <= -6)) return 'health';
+      if (!card) return 'flag';
+      if (card.id === 'class' || card.id === 'review' || card.id === 'graduate') return 'class';
+      if (card.id === 'library') return 'library';
+      if (card.id === 'game') return 'game';
+      if (card.id === 'work' || card.id === 'intern') return 'work';
+      if (card.id === 'love') return 'love';
+      if (card.id === 'project' || card.id === 'competition' || card.id === 'startup') return 'project';
+      if (card.id === 'club' || card.id === 'chat' || card.id === 'dinner') return 'social';
+      return 'fish';
+    },
+
+    pickWallComments(familiarityGain) {
+      const comments = [];
+      if (familiarityGain) comments.push(`${familiarityGain.name}：熟悉度又悄悄涨了一格。`);
+      const unlocked = Object.keys(this.state.familiarity).filter((id) => this.state.familiarity[id] >= 1);
+      shuffle(unlocked).forEach((id) => {
+        if (comments.length >= 2) return;
+        const text = this.pickRecentSafe(CFG.CampusWall.comments[id] || [], this.state.recentWallCommentIds, CFG.CampusWall.recentCommentWindow);
+        if (text) comments.push(text);
+      });
+      if (!comments.length) comments.push(this.pickRecentSafe(CFG.CampusWall.comments.system, this.state.recentWallCommentIds, CFG.CampusWall.recentCommentWindow));
+      return comments.filter(Boolean).slice(0, 2);
+    },
+
+    pickRecentSafe(pool, recentList, limit) {
+      if (!pool || !pool.length) return '';
+      let options = pool.filter((text) => recentList.indexOf(text) < 0);
+      if (!options.length) options = pool;
+      const picked = options[Math.floor(Math.random() * options.length)];
+      recentList.push(picked);
+      while (recentList.length > limit) recentList.shift();
+      return picked;
     },
 
     getRepresentativeRoasts() {
@@ -1916,6 +2396,35 @@
       this.particleRaf = window.requestAnimationFrame(step);
     },
 
+    loadTitleBook() {
+      try {
+        const raw = localStorage.getItem(CFG.Storage.titleBookKey);
+        if (!raw) return { items: {} };
+        const parsed = JSON.parse(raw);
+        if (!parsed || !parsed.items) return { items: {} };
+        return parsed;
+      } catch (err) {
+        return { items: {} };
+      }
+    },
+
+    saveTitleBook(book) {
+      try {
+        localStorage.setItem(CFG.Storage.titleBookKey, JSON.stringify(book || { items: {} }));
+      } catch (err) {}
+    },
+
+    getTitleProgress(book) {
+      const data = book || this.loadTitleBook();
+      return { count: Object.keys(data.items || {}).length, total: (CFG.HiddenTitles || []).length };
+    },
+
+    hasEverPlayed() {
+      const dex = this.loadDex();
+      const story = this.loadStoryBook();
+      return Object.keys(dex.items || {}).length > 0 || Object.keys(story.unlockedStories || {}).length > 0 || Object.keys(story.unlockedCharacters || {}).length > 0;
+    },
+
     handleImpactFeedback(changes) {
       if (changes === undefined || changes === null || changes.length === 0) return;
       const major = changes.some((item) => item.delta <= CFG.Game.majorNegativeThreshold);
@@ -1946,6 +2455,80 @@
       el.className = 'red-flash';
       this.dom.overlay.appendChild(el);
       window.setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, CFG.UI.redFlashMs);
+    },
+
+
+    getChosenFlag() {
+      return this.state.chosenFlag ? FLAG_BY_ID[this.state.chosenFlag] : null;
+    },
+
+    updateFlagProgress() {
+      const flag = this.getChosenFlag();
+      if (!flag) return { percent: 0, onTrack: true, label: '尚未立 Flag', success: false };
+      const result = this.calculateFlagProgress(flag);
+      this.state.flagProgress[flag.id] = result;
+      return result;
+    },
+
+    calculateFlagProgress(flag) {
+      const week = this.state.week;
+      let current = 0;
+      let target = 1;
+      let label = flag.description;
+      let success = false;
+      if (flag.id === 'flag_scholarship') {
+        current = Math.min(this.state.attrs.academic, 80) + Math.min(this.state.attrs.health, 40);
+        target = 120;
+        success = this.state.attrs.academic >= 80 && this.state.attrs.health >= 40;
+        label = `学业${this.state.attrs.academic} / 健康${this.state.attrs.health}`;
+      } else if (flag.id === 'flag_social') {
+        const known = Object.values(this.state.familiarity).filter((level) => level > 0).length;
+        const totalFam = Object.values(this.state.familiarity).reduce((sum, level) => sum + level, 0);
+        current = Math.min(this.state.attrs.social, 75) + Math.min(totalFam * 5, 40);
+        target = 115;
+        success = this.state.attrs.social >= 75 && totalFam >= 8 && this.getStoryProgress(this.state.storyBook).stories >= 3;
+        label = `社交${this.state.attrs.social} / 认识${known}人`;
+      } else if (flag.id === 'flag_sleep') {
+        const night = this.countNightBehaviors();
+        current = Math.min(this.state.attrs.health, 70) + Math.max(0, 30 - night * 5);
+        target = 100;
+        success = this.state.attrs.health >= 70 && night <= 5;
+        label = `健康${this.state.attrs.health} / 夜间${night}`;
+      } else if (flag.id === 'flag_direction') {
+        const positiveHabits = this.state.habits.filter((id) => HABIT_BY_ID[id] && HABIT_BY_ID[id].quality > 0).length;
+        current = Math.min(this.state.attrs.identity, 75) + Math.min(positiveHabits * 15, 30);
+        target = 105;
+        success = this.state.attrs.identity >= 75 && positiveHabits >= 2;
+        label = `认同${this.state.attrs.identity} / 正向习惯${positiveHabits}`;
+      } else if (flag.id === 'flag_money') {
+        current = Math.min(this.state.attrs.money, 65) + Math.min(this.countGroup('workIntern') * 8, 35);
+        target = 100;
+        success = this.state.attrs.money >= 65 && this.countGroup('workIntern') >= 4 && this.state.attrs.health >= 35;
+        label = `金钱${this.state.attrs.money} / 打工实习${this.countGroup('workIntern')}`;
+      } else if (flag.id === 'flag_skill') {
+        current = Math.min(this.state.attrs.skill, 75) + Math.min(this.countGroup('projectCompetitionStartup') * 7, 35);
+        target = 110;
+        success = this.state.attrs.skill >= 75 && this.countGroup('projectCompetitionStartup') >= 5;
+        label = `技能${this.state.attrs.skill} / 项目线${this.countGroup('projectCompetitionStartup')}`;
+      }
+      const percent = clamp(Math.round((current / target) * 100), 0, 100);
+      return { percent, onTrack: this.isFlagOnTrack(flag), label, success };
+    },
+
+    isFlagOnTrack(flag) {
+      const week = this.state.week;
+      if (week < 4) return true;
+      if (flag.id === 'flag_scholarship') return this.state.attrs.academic >= (week >= 12 ? 72 : week >= 8 ? 65 : 58);
+      if (flag.id === 'flag_social') return week >= 8 ? (this.state.attrs.social >= (week >= 12 ? 68 : 50) && Object.values(this.state.familiarity).filter((level) => level > 0).length >= 2) : this.state.attrs.social >= 50;
+      if (flag.id === 'flag_sleep') return week >= 8 ? (this.countNightBehaviors() <= (week >= 12 ? 5 : 3) && this.state.attrs.health >= 60) : this.state.attrs.health >= 62;
+      if (flag.id === 'flag_direction') return week >= 8 ? (this.state.habits.length >= 1 && this.state.attrs.identity >= (week >= 12 ? 68 : 55)) : this.state.attrs.identity >= 55;
+      if (flag.id === 'flag_money') return week >= 12 ? this.countGroup('workIntern') >= 3 : this.state.attrs.money >= (week >= 8 ? 48 : 38);
+      if (flag.id === 'flag_skill') return this.state.attrs.skill >= (week >= 12 ? 66 : week >= 8 ? 55 : 45);
+      return true;
+    },
+
+    isFlagMilestoneWeek() {
+      return (CFG.Game.flagCheckWeeks || []).indexOf(this.state.week) >= 0;
     },
 
     getStage(week) {
@@ -2175,7 +2758,7 @@
     saveGame() {
       const data = clone(this.state);
       data.currentCardIds = this.state.currentCards.map((card) => card.id);
-      delete data.currentCards;
+      data.currentCardOffers = this.state.currentCards.map((card) => ({ id: card.id, variantId: card.variant ? card.variant.id : null }));
       data.currentStory = null;
       data.resumeNextAfterStory = null;
       data.pendingStoryResume = null;
@@ -2211,11 +2794,28 @@
       restored.dex = dex;
       restored.storyBook = storyBook;
       restored.muted = muted;
-      restored.currentCards = (saved.currentCardIds || []).map((id) => CARD_BY_ID[id]).filter(Boolean);
-      if (restored.currentCards.length === 0 && restored.pendingNext === null && restored.cardLocked === false) restored.currentCards = this.generateCardsForState(restored);
       this.state = restored;
+      if (Array.isArray(saved.currentCards) && saved.currentCards.length) {
+        restored.currentCards = saved.currentCards;
+      } else if (Array.isArray(saved.currentCardOffers) && saved.currentCardOffers.length) {
+        restored.currentCards = saved.currentCardOffers.map((offer) => this.restoreCardOffer(offer)).filter(Boolean);
+      } else {
+        restored.currentCards = (saved.currentCardIds || []).map((id) => this.attachCardVariant(CARD_BY_ID[id])).filter(Boolean);
+      }
+      if (restored.currentCards.length === 0 && restored.pendingNext === null && restored.cardLocked === false) restored.currentCards = this.generateCardsForState(restored);
       Loader.syncMuted();
       return true;
+    },
+
+    restoreCardOffer(offer) {
+      const card = CARD_BY_ID[offer && offer.id];
+      if (!card) return null;
+      const variants = VARIANTS_BY_CARD[card.id] || [];
+      const variant = variants.find((item) => item.id === offer.variantId) || null;
+      const previewEffects = clone(card.effects);
+      if (variant && variant.effects) mergeEffects(previewEffects, variant.effects);
+      this.clampNegativeEffectsForStage(previewEffects);
+      return Object.assign({}, card, { effects: clone(card.effects), variant: variant ? clone(variant) : null, previewEffects });
     },
 
     generateCardsForState(tempState) {
@@ -2276,6 +2876,17 @@
 
   function unique(list) {
     return list.filter((item, index) => list.indexOf(item) === index);
+  }
+
+  function shuffle(list) {
+    const arr = list.slice();
+    for (let index = arr.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      const temp = arr[index];
+      arr[index] = arr[swapIndex];
+      arr[swapIndex] = temp;
+    }
+    return arr;
   }
 
   function weightedPick(list, weightGetter) {

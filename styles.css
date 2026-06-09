@@ -1641,3 +1641,456 @@ button {
     box-shadow: none;
   }
 }
+
+/* Version 1.3: Flag, campus wall, card variants and black-history report. */
+.flag-scene .ui-stage {
+  padding: 52px 20px 20px;
+}
+
+.flag-title,
+.black-report-title {
+  position: absolute;
+  left: 24px;
+  top: 52px;
+  width: 366px;
+  font-family: var(--font-title);
+  font-size: 34px;
+  font-weight: 1000;
+  line-height: 1.12;
+  text-align: center;
+  text-shadow: 2px 3px 0 rgba(255, 255, 255, 0.88);
+}
+
+.flag-subtitle {
+  position: absolute;
+  left: 36px;
+  top: 108px;
+  width: 342px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: rgba(255, 247, 232, 0.86);
+  box-shadow: 0 8px 18px var(--shadow);
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.36;
+  text-align: center;
+}
+
+.flag-card-list {
+  position: absolute;
+  left: 22px;
+  top: 150px;
+  width: 370px;
+  display: grid;
+  gap: 12px;
+}
+
+.flag-choice-card {
+  width: 370px;
+  min-height: 124px;
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 2px dashed rgba(61, 51, 37, 0.16);
+  border-radius: 22px;
+  background: rgba(255, 247, 232, 0.94);
+  box-shadow: 0 10px 22px var(--shadow);
+  text-align: left;
+  cursor: pointer;
+}
+
+.flag-choice-card:active,
+.flag-confirm-card {
+  animation: flagPop 260ms cubic-bezier(0.2, 1.35, 0.36, 1) both;
+}
+
+.flag-visual {
+  width: 84px;
+  height: 84px;
+  display: grid;
+  place-items: center;
+  border-radius: 24px;
+  background: rgba(123, 223, 242, 0.18);
+}
+
+.flag-card-img {
+  width: 78px;
+  height: 78px;
+  object-fit: contain;
+}
+
+.flag-fallback {
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  border-radius: 22px;
+  background: linear-gradient(135deg, var(--flag-color), #fff3bd);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55);
+  font-size: 19px;
+  font-weight: 1000;
+}
+
+.flag-copy {
+  min-width: 0;
+}
+
+.flag-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 18px;
+  font-weight: 1000;
+  line-height: 1.24;
+}
+
+.flag-desc,
+.flag-stage-hint {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  margin-top: 7px;
+  color: rgba(61, 51, 37, 0.68);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.flag-stage-hint {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 209, 102, 0.45);
+  color: var(--ink);
+}
+
+.flag-confirm-card,
+.flag-check-card {
+  text-align: center;
+}
+
+.flag-confirm-stamp {
+  display: inline-flex;
+  margin-bottom: 10px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--yellow), #fff0aa);
+  font-size: 14px;
+  font-weight: 1000;
+  transform: rotate(-3deg);
+}
+
+.flag-check-card.alive {
+  border-color: rgba(42, 157, 143, 0.36);
+}
+
+.flag-check-card.smoke {
+  border-color: rgba(231, 111, 81, 0.34);
+  animation: flagSmoke 180ms ease both;
+}
+
+.campus-wall-card {
+  position: absolute;
+  left: 20px;
+  top: 230px;
+  width: 374px;
+  height: 82px;
+  padding: 10px 14px;
+  overflow: hidden;
+  border: 2px solid rgba(61, 51, 37, 0.12);
+  border-radius: 24px 24px 24px 10px;
+  background:
+    linear-gradient(rgba(255, 247, 232, 0.86), rgba(255, 247, 232, 0.9)),
+    url("assets/images/campus_wall_panel.png") center / cover no-repeat;
+  box-shadow: 0 8px 18px var(--shadow);
+  animation: wallSlideIn 220ms ease both;
+}
+
+.campus-wall-card.hot {
+  border-color: rgba(231, 111, 81, 0.32);
+  animation: wallSlideIn 220ms ease both, hotWiggle 260ms steps(3) 220ms both;
+}
+
+.campus-wall-card.empty {
+  opacity: 0.86;
+}
+
+.wall-head {
+  display: flex;
+  justify-content: space-between;
+  color: #2f675b;
+  font-size: 12px;
+  font-weight: 1000;
+}
+
+.wall-post {
+  display: -webkit-box;
+  height: 34px;
+  margin-top: 4px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 15px;
+  font-weight: 1000;
+  line-height: 1.18;
+}
+
+.wall-comments {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.wall-comments span {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1 1 0;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flag-habit-row {
+  position: absolute;
+  left: 20px;
+  top: 318px;
+  width: 374px;
+  height: 58px;
+  display: grid;
+  grid-template-columns: 146px 1fr;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.flag-mini {
+  min-width: 0;
+  padding: 7px 9px;
+  overflow: hidden;
+  border: 2px dashed rgba(61, 51, 37, 0.12);
+  border-radius: 17px;
+  background: rgba(255, 247, 232, 0.9);
+  box-shadow: 0 8px 18px rgba(80, 60, 30, 0.12);
+}
+
+.flag-mini.alive {
+  background: rgba(144, 190, 109, 0.25);
+}
+
+.flag-mini.smoke {
+  background: rgba(255, 226, 218, 0.84);
+}
+
+.flag-mini span,
+.flag-mini em {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flag-mini span {
+  font-size: 12px;
+  font-weight: 1000;
+}
+
+.flag-mini em {
+  margin-top: 5px;
+  color: rgba(61, 51, 37, 0.66);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.habit-mini-list {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.habit-chip.mini {
+  min-height: 28px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.habit-mini-empty {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 17px;
+  background: rgba(255, 247, 232, 0.78);
+  color: rgba(61, 51, 37, 0.58);
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.variant-title {
+  height: 30px;
+  margin-top: 3px;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: #2f675b;
+  font-size: 12px;
+  font-weight: 1000;
+  line-height: 1.22;
+}
+
+.black-report-scene {
+  --scene-bg: url("assets/images/black_history_report_panel.png");
+}
+
+.black-report-title {
+  top: 42px;
+  z-index: 2;
+  font-size: 30px;
+}
+
+.black-report-scroll {
+  position: absolute;
+  left: 24px;
+  top: 104px;
+  width: 366px;
+  height: 604px;
+  padding: 14px 14px 18px;
+  overflow-y: auto;
+  border: 3px dashed rgba(61, 51, 37, 0.16);
+  border-radius: 24px;
+  background: rgba(255, 247, 232, 0.91);
+  box-shadow: 0 16px 34px var(--shadow);
+}
+
+.black-head {
+  grid-template-columns: 96px 1fr;
+}
+
+.black-head .avatar-frame {
+  width: 96px;
+  height: 96px;
+  border-radius: 28px;
+}
+
+.black-head .avatar-img {
+  width: 86px;
+  height: 86px;
+}
+
+.timeline-list {
+  display: grid;
+  gap: 7px;
+}
+
+.timeline-item {
+  display: -webkit-box;
+  padding: 9px 11px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.34;
+}
+
+.title-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.title-chip {
+  max-width: 100%;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--yellow), #fff0aa);
+  box-shadow: 0 6px 12px rgba(80, 60, 30, 0.12);
+  font-size: 12px;
+  font-weight: 1000;
+}
+
+.success-line {
+  background: rgba(144, 190, 109, 0.28);
+}
+
+.fail-line {
+  background: rgba(231, 111, 81, 0.18);
+}
+
+.fixed-actions {
+  left: 24px;
+  bottom: 20px;
+  width: 366px;
+  height: 84px;
+  align-items: center;
+}
+
+.fixed-actions .btn {
+  min-height: 46px;
+}
+
+@keyframes flagPop {
+  0% { transform: scale(0.75); opacity: 0; }
+  68% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes flagSmoke {
+  from { box-shadow: inset 0 0 0 0 rgba(231, 111, 81, 0.0), 0 16px 34px var(--shadow); }
+  to { box-shadow: inset 0 0 0 6px rgba(231, 111, 81, 0.18), 0 16px 34px var(--shadow); }
+}
+
+@keyframes wallSlideIn {
+  from { opacity: 0; transform: translate(16px, 8px); }
+  to { opacity: 1; transform: translate(0, 0); }
+}
+
+@keyframes hotWiggle {
+  0% { transform: translate(0, 0); }
+  33% { transform: translate(3px, 0); }
+  66% { transform: translate(-3px, 2px); }
+  100% { transform: translate(0, 0); }
+}
+
+@media (max-width: 430px), (max-height: 760px) {
+  .campus-wall-card {
+    top: 224px;
+    height: 78px;
+  }
+
+  .wall-post {
+    height: 31px;
+    font-size: 14px;
+  }
+
+  .flag-habit-row {
+    top: 308px;
+  }
+
+  .variant-title {
+    height: 28px;
+    font-size: 11px;
+  }
+
+  .flag-card-list {
+    gap: 10px;
+  }
+
+  .flag-choice-card {
+    min-height: 118px;
+  }
+}
