@@ -4,11 +4,16 @@
 }
 
 :root {
+  --app-width: 100vw;
   --app-height: 100dvh;
+  --app-left: 0px;
+  --app-top: 0px;
   --base-game-width: 414px;
   --base-game-height: 828px;
   --game-width: 414px;
   --game-height: 828px;
+  --game-left: 0px;
+  --game-top: 0px;
   --stage-offset-x: 0px;
   --stage-offset-y: 0px;
   --paper: #FFF7E8;
@@ -48,16 +53,16 @@ button {
 
 #game-shell {
   position: relative;
-  width: 100vw;
+  width: var(--app-width, 100vw);
   height: var(--app-height, 100dvh);
   min-height: 100svh;
-  display: grid;
-  place-items: center;
   overflow: hidden;
 }
 
 #game-container {
-  position: relative;
+  position: absolute;
+  left: var(--game-left, 0px);
+  top: var(--game-top, 0px);
   width: var(--game-width);
   height: var(--game-height);
   overflow: hidden;
@@ -65,7 +70,7 @@ button {
   background: var(--paper);
   box-shadow: 0 22px 70px rgba(42, 73, 81, 0.26);
   transform: scale(var(--game-scale, 1));
-  transform-origin: center center;
+  transform-origin: 0 0;
   touch-action: manipulation;
   will-change: transform;
 }
@@ -1887,7 +1892,7 @@ button {
 }
 
 .flag-mini.smoke {
-  background: rgba(255, 226, 218, 0.84);
+  display: block;
 }
 
 .flag-mini span,
@@ -2092,5 +2097,279 @@ button {
 
   .flag-choice-card {
     min-height: 118px;
+  }
+}
+
+/* Version 1.4: mobile full-fit layout keeps the full 414 x 828 safe stage visible. */
+@supports (height: 100dvh) {
+  html,
+  body {
+    height: 100dvh;
+  }
+}
+
+
+@media (max-width: 720px) {
+  html,
+  body {
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  #game-shell {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: var(--app-width, 100vw);
+    height: var(--app-height, 100dvh);
+    min-height: 0;
+  }
+
+  #game-container {
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .dialog-card,
+  .pause-card,
+  .tutorial-card,
+  .loading-card {
+    max-width: calc(var(--base-game-width) - 40px);
+  }
+
+  .attr-board {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    height: 124px;
+    padding: 10px;
+  }
+
+  .attr-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px;
+    font-size: 11px;
+  }
+
+  .attr-item.attr-identity .attr-head {
+    font-size: 11px;
+  }
+
+  .attr-name {
+    flex: none;
+  }
+
+  .attr-dot {
+    width: 8px;
+    height: 8px;
+    flex-basis: 8px;
+    margin-right: 4px;
+  }
+
+  .attr-value {
+    font-size: 11px;
+  }
+
+  .final-attrs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .final-attr {
+    font-size: 11px;
+  }
+
+  .final-attr.identity {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 360px) {
+  .top-bar {
+    height: 64px;
+  }
+
+  .week-label {
+    font-size: 21px;
+  }
+
+  .stage-label,
+  .progress-pill,
+  .roast-kicker,
+  .wall-head {
+    font-size: 11px;
+  }
+
+  .attr-board {
+    top: 90px;
+    height: 112px;
+    gap: 4px 6px;
+    padding: 8px;
+  }
+
+  .attr-head,
+  .attr-item.attr-identity .attr-head {
+    font-size: 10px;
+  }
+
+  .attr-track {
+    height: 7px;
+  }
+
+  .campus-wall-card,
+  .roast-bubble {
+    top: 208px;
+    height: 76px;
+    padding: 9px 12px;
+  }
+
+  .wall-post {
+    height: 30px;
+    font-size: 13px;
+  }
+
+  .flag-habit-row,
+  .habit-row {
+    top: 290px;
+  }
+
+  .card-row {
+    top: 354px;
+    height: 210px;
+  }
+
+  .behavior-card {
+    height: 210px;
+    padding: 8px 7px;
+  }
+
+  .card-icon-wrap {
+    width: 60px;
+    height: 60px;
+    margin-bottom: 4px;
+  }
+
+  .card-icon {
+    width: 58px;
+    height: 58px;
+  }
+
+  .card-name {
+    font-size: 15px;
+  }
+
+  .card-desc {
+    height: 30px;
+    margin: 4px 0;
+    font-size: 11px;
+  }
+
+  .effect-line {
+    min-height: 17px;
+    padding: 1px 5px;
+    font-size: 10px;
+  }
+
+  .bottom-panel {
+    top: 636px;
+    height: 104px;
+    gap: 8px;
+  }
+
+  .combo-box {
+    min-height: 44px;
+    padding: 9px 12px;
+    font-size: 13px;
+  }
+
+  .btn {
+    min-height: 42px;
+    font-size: 15px;
+  }
+
+  .flag-title,
+  .black-report-title {
+    top: 34px;
+    font-size: 28px;
+  }
+
+  .flag-subtitle {
+    top: 86px;
+    font-size: 13px;
+  }
+
+  .flag-card-list {
+    top: 128px;
+    gap: 8px;
+  }
+
+  .flag-choice-card {
+    min-height: 112px;
+    grid-template-columns: 78px 1fr;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .flag-visual {
+    width: 74px;
+    height: 74px;
+  }
+
+  .flag-card-img {
+    width: 68px;
+    height: 68px;
+  }
+
+  .flag-name {
+    font-size: 16px;
+  }
+
+  .story-week-badge {
+    top: 16px;
+    left: 16px;
+    height: 40px;
+    font-size: 12px;
+  }
+
+  .story-skip {
+    top: 16px;
+    right: 16px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .story-character {
+    top: 282px;
+    height: 262px;
+  }
+
+  .dialogue-note {
+    top: 548px;
+    height: 150px;
+  }
+
+  .dialogue-body {
+    height: 62px;
+    font-size: 16px;
+  }
+
+  .black-report-scroll {
+    top: 88px;
+    height: 610px;
+  }
+
+  .dex-panel,
+  .report-card {
+    top: 18px;
+    height: 790px;
+  }
+
+  .fixed-actions,
+  .report-actions,
+  .dex-actions {
+    bottom: 12px;
   }
 }

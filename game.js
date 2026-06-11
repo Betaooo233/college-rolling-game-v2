@@ -224,6 +224,7 @@
     toastTimer: 0,
 
     prepareLayout() {
+      this.dom.shell = this.dom.shell || document.getElementById('game-shell');
       this.dom.container = this.dom.container || document.getElementById('game-container');
       this.dom.canvas = this.dom.canvas || document.getElementById('fx-canvas');
       if (this.dom.container !== null) {
@@ -234,6 +235,7 @@
     },
 
     init() {
+      this.dom.shell = document.getElementById('game-shell');
       this.dom.container = document.getElementById('game-container');
       this.dom.scene = document.getElementById('scene-root');
       this.dom.overlay = document.getElementById('overlay-root');
@@ -244,6 +246,10 @@
       this.dom.container.style.setProperty('--base-game-height', `${CFG.Screen.height}px`);
       this.resizeGame();
       window.addEventListener('resize', () => this.resizeGame());
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => this.resizeGame());
+        window.visualViewport.addEventListener('scroll', () => this.resizeGame());
+      }
       window.addEventListener('orientationchange', () => window.setTimeout(() => this.resizeGame(), 80));
       if (this.dom.loading !== null) {
         this.dom.loading.classList.add('hidden');
@@ -263,43 +269,75 @@
       if (this.dom.container === undefined || this.dom.container === null) return;
       if (document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
       const root = document.documentElement;
-      const viewportWidth = window.innerWidth || root.clientWidth || CFG.Screen.width;
-      const viewportHeight = window.innerHeight || root.clientHeight || CFG.Screen.height;
-      root.style.setProperty('--app-height', `${viewportHeight}px`);
+      const viewport = this.getViewportSize(root);
+      root.style.setProperty('--app-width', `${viewport.layoutWidth}px`);
+      root.style.setProperty('--app-height', `${viewport.layoutHeight}px`);
+      root.style.setProperty('--app-left', `${viewport.left}px`);
+      root.style.setProperty('--app-top', `${viewport.top}px`);
+      root.style.setProperty('--viewport-width', `${viewport.width}px`);
 
-      const layout = this.getResponsiveLayout(viewportWidth, viewportHeight);
-      this.layout = layout;
+      const layout = this.getResponsiveLayout(viewport.width, viewport.height);
+      const left = Math.round(viewport.left + Math.max(0, (viewport.width - layout.width * layout.scale) / 2));
+      const top = Math.round(viewport.top + Math.max(0, (viewport.height - layout.height * layout.scale) / 2));
+      this.layout = Object.assign({}, layout, { left, top, viewport });
       this.dom.container.style.setProperty('--game-width', `${layout.width}px`);
       this.dom.container.style.setProperty('--game-height', `${layout.height}px`);
+      this.dom.container.style.setProperty('--game-left', `${left}px`);
+      this.dom.container.style.setProperty('--game-top', `${top}px`);
       this.dom.container.style.setProperty('--stage-offset-x', `${layout.offsetX}px`);
       this.dom.container.style.setProperty('--stage-offset-y', `${layout.offsetY}px`);
       this.dom.container.style.setProperty('--game-scale', `${layout.scale}`);
+      this.dom.container.classList.toggle('compact-layout', layout.compact === true);
       this.resizeCanvas(layout.width, layout.height);
+    },
+
+    getViewportSize(root) {
+      const visual = window.visualViewport;
+      const layoutWidth = window.innerWidth || root.clientWidth || CFG.Screen.width;
+      const layoutHeight = window.innerHeight || root.clientHeight || CFG.Screen.height;
+      const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+      const useVisual = Boolean(visual && (isCoarse || layoutWidth <= CFG.Screen.mobileMaxWidth));
+      const width = useVisual && visual.width ? visual.width : layoutWidth;
+      const height = useVisual && visual.height ? visual.height : layoutHeight;
+      const visualScale = useVisual && typeof visual.scale === 'number' ? visual.scale : 1;
+      const left = useVisual && visualScale > 1.01 && typeof visual.offsetLeft === 'number' ? visual.offsetLeft : 0;
+      const top = useVisual && visualScale > 1.01 && typeof visual.offsetTop === 'number' ? visual.offsetTop : 0;
+      return {
+        width: Math.max(1, Math.round(width)),
+        height: Math.max(1, Math.round(height)),
+        layoutWidth: Math.max(1, Math.round(layoutWidth)),
+        layoutHeight: Math.max(1, Math.round(layoutHeight)),
+        left: Math.round(left),
+        top: Math.round(top)
+      };
     },
 
     getResponsiveLayout(viewportWidth, viewportHeight) {
       const baseWidth = CFG.Screen.width;
       const baseHeight = CFG.Screen.height;
       const viewportRatio = viewportWidth / Math.max(viewportHeight, 1);
-      const isCompact = viewportWidth <= CFG.Screen.mobileMaxWidth || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+      const baseRatio = baseWidth / baseHeight;
+      const isMobile = viewportWidth <= CFG.Screen.mobileMaxWidth || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
       let width = baseWidth;
       let height = baseHeight;
 
-      if (isCompact) {
-        if (viewportRatio > CFG.Screen.ratio) {
-          width = clamp(Math.round(viewportWidth / (viewportHeight / baseHeight)), baseWidth, CFG.Screen.maxResponsiveWidth);
+      if (isMobile) {
+        if (viewportRatio > baseRatio) {
+          width = clamp(Math.ceil(baseHeight * viewportRatio), baseWidth, CFG.Screen.maxResponsiveWidth);
         } else {
-          height = clamp(Math.round(viewportHeight / (viewportWidth / baseWidth)), baseHeight, CFG.Screen.maxResponsiveHeight);
+          height = clamp(Math.ceil(baseWidth / viewportRatio), baseHeight, CFG.Screen.maxResponsiveHeight);
         }
       }
 
-      const scale = Math.min(viewportWidth / width, viewportHeight / height);
+      const rawScale = Math.min(viewportWidth / width, viewportHeight / height);
+      const scale = Math.max(0.01, Math.min(1, rawScale));
       return {
         width,
         height,
         scale,
-        offsetX: Math.round((width - baseWidth) / 2),
-        offsetY: Math.round((height - baseHeight) / 2)
+        compact: isMobile && viewportHeight <= CFG.Screen.compactMaxViewportHeight,
+        offsetX: Math.max(0, Math.round((width - baseWidth) / 2)),
+        offsetY: Math.max(0, Math.round((height - baseHeight) / 2))
       };
     },
 

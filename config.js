@@ -8,8 +8,9 @@
       ratio: 0.5,
       safeMargin: 20,
       mobileMaxWidth: 720,
-      maxResponsiveWidth: 560,
-      maxResponsiveHeight: 920
+      compactMaxViewportHeight: 740,
+      maxResponsiveWidth: 2200,
+      maxResponsiveHeight: 2200
     },
     Storage: {
       dexKey: 'collegePersonaDex_v1',
